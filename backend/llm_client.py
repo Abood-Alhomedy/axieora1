@@ -75,6 +75,43 @@ async def chat_completion(
     logger.info("FINISH REASON: %s", resp.choices[0].finish_reason)
 
     return message
+
+async def chat_completion_stream(
+    system_prompt: str,
+    user_message: str,
+    *,
+    temperature: float = 0.3,
+    tools: list | None = None,
+    messages_history: list | None = None
+):
+    """
+    نسخة من دالة المحادثة تُعيد مسار البيانات (Streaming) لرد الذكاء الاصطناعي.
+    """
+    client = get_client()
+    
+    # 1. إعداد سجل الرسائل
+    messages = messages_history or [
+        {"role": "system", "content": system_prompt},
+    ]
+    if user_message:
+        messages.append({"role": "user", "content": user_message})
+    
+    # 2. إعداد خصائص الطلب مع تفعيل stream=True
+    kwargs: dict = {
+        "model": OPENROUTER_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,  # 👈 هذا السطر هو الأهم للتدفق
+    }
+    
+    # إضافة الأدوات في حال توفرها
+    if tools:
+        kwargs["tools"] = tools
+
+    # 3. إرجاع المُولِّد التزامني (Async Generator)
+    response_stream = await client.chat.completions.create(**kwargs)
+    return response_stream
+
 async def chat_completion_json(
     system_prompt: str,
     user_message: str,

@@ -43,10 +43,13 @@ from orchestrator import (
 )
 import json
 import Tools.gmail # لتسجيل أدوات جي ميل
-from Tools.base import ToolRegistry
+import Tools.web_search # لتسجيل أداة البحث الحقيقية
+from Tools.clean_registry import CleanToolRegistry
 from Tools.oauth import router as oauth_router, USER_TOKENS
 
 # أضف مسارات الـ OAuth للتطبيق
+from llm_client import chat_completion, chat_completion_stream, chat_completion_json
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -271,7 +274,7 @@ async def run_agent(name: str, body: dict):
         try:
             agent_tool_ids = data.get("tools", [])
 
-            all_tools = ToolRegistry.get_all_llm_schemas()
+            all_tools = CleanToolRegistry.get_all_llm_schemas()
 
             llm_tools = [
                 tool
@@ -285,51 +288,111 @@ async def run_agent(name: str, body: dict):
             if user_message:
                 messages.append({"role": "user", "content": user_message})
 
-            # الاستدعاء الأول
-            response_message = await chat_completion(
+            # 1. الاستدعاء الأول باستخدام طريقة التدفق الجديدة
+            response_stream = await chat_completion_stream(
                 instructions, "", 
                 temperature=data.get("temperature", 0.7),
                 tools=llm_tools,
                 messages_history=messages
             )
 
-            # إذا طلب استخدام أداة
-            if hasattr(response_message, 'tool_calls') and response_message.tool_calls:
-                # تحويل الكائن إلى قاموس لإضافته للسجل
-                messages.append(response_message.model_dump())
+            full_content = ""
+            tool_calls_dict = {}
+
+            # 2. استهلاك أجزاء الرد قطعة قطعة (Streaming Iteration)
+            async for chunk in response_stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
                 
-                for tool_call in response_message.tool_calls:
-                    tool_id = tool_call.function.name
-                    args = json.loads(tool_call.function.arguments)
+                # أ- إرسال النصوص إلى المستخدم فور وصولها (حتى يراها وهي تُكتب)
+                if delta.content:
+                    full_content += delta.content
+                    yield f"data: {json.dumps({'type': 'token', 'content': delta.content})}\n\n"
+                
+                # ب- تجميع أوامر استدعاء الأدوات (لأنها تدفق ولا تأتي كاملة)
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_dict:
+                            tool_calls_dict[idx] = {
+                                "id": tc.id,
+                                "type": "function",
+                                "function": {"name": tc.function.name or "", "arguments": tc.function.arguments or ""}
+                            }
+                        else:
+                            if tc.function.name:
+                                tool_calls_dict[idx]["function"]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_dict[idx]["function"]["arguments"] += tc.function.arguments
+
+            # 3. في حال قرر الذكاء الاصطناعي استخدام أدوات مساعدة
+            if tool_calls_dict:
+                tool_calls_list = list(tool_calls_dict.values())
+                messages.append({
+                    "role": "assistant",
+                    "content": full_content,
+                    "tool_calls": tool_calls_list
+                })
+                
+                for tool_call in tool_calls_list:
+                    tool_id = tool_call["function"]["name"]
+                    args_str = tool_call["function"]["arguments"]
+                    
+                    try:
+                        args = json.loads(args_str)
+                    except:
+                        args = {}
                     
                     yield f"data: {json.dumps({'type': 'token', 'content': f'\\n[جاري تشغيل: {tool_id}...]\\n'})}\n\n"
                     
-                    tool_record = ToolRegistry.get_tool(tool_id)
+                    tool_record = CleanToolRegistry.get_tool(tool_id)
                     if tool_record:
-                        # جلب التوكن الخاص بالمستخدم (استخدمنا test_user للتجربة)
                         access_token = USER_TOKENS.get("test_user")
-                        
-                        result = await tool_record["executor"](
-                            args,
-                            context={"access_token": access_token},
-                        )
-                        
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": json.dumps(result)
-                        })
+                        try:
+                            result = await tool_record["executor"](
+                                args,
+                                context={"access_token": access_token},
+                              )
+                            # إرسال النتيجة إلى سجل المحادثة
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call["id"],
+                                "name": tool_id,
+                                "content": json.dumps(result)
+                            })
+                        except Exception as e:
+                            messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call["id"],
+                                "name": tool_id,
+                                "content": str(e)
+                            })
                 
-                # الاستدعاء الثاني بالنتيجة
-                final_message = await chat_completion(
+                # 4. الاستدعاء الثاني للحصول على النتيجة النهائية بعد تنفيذ الأداة مدعوماً بالتدفق
+                second_stream = await chat_completion_stream(
                     instructions, "",
                     messages_history=messages,
                     tools=llm_tools
                 )
-                yield f"data: {json.dumps({'type': 'done', 'content': final_message.content})}\n\n"
+                
+                final_content = ""
+                async for final_chunk in second_stream:
+                    if not final_chunk.choices:
+                        continue
+                    final_delta = final_chunk.choices[0].delta
+                    if final_delta.content:
+                        final_content += final_delta.content
+                        
+                        yield f"data: {json.dumps({'type': 'token', 'content': final_delta.content})}\n\n"
+                
+                yield f"data: {json.dumps({'type': 'done', 'content': final_content})}\n\n"
             else:
-                yield f"data: {json.dumps({'type': 'done', 'content': response_message.content})}\n\n"
+                # إذا لم تكن هناك أدوات، نُصدر أمر الانتهاء
+                yield f"data: {json.dumps({'type': 'done', 'content': full_content})}\n\n"
 
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
 

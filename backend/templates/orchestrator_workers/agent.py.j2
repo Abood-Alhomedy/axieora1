@@ -1,0 +1,41 @@
+from agent_framework import AzureOpenAIChatClient
+from azure.identity.aio import DefaultAzureCredential
+import sys
+import os
+
+{% if spec.workers %}
+# Import the generated worker nodes
+{% for worker in spec.workers %}
+from workers.{{ worker }} import create_worker as create_{{ worker }}
+{% endfor %}
+{% endif %}
+
+def create_orchestrator():
+    """
+    Auto-generated Orchestrator Manager.
+    Delegates tasks to its workers based on intent.
+    Architecture: {{ spec.architecture }}
+    """
+    orchestrator = AzureOpenAIChatClient(
+        credential=DefaultAzureCredential(),
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+        deployment="gpt-4o",
+    ).as_agent(
+        name="{{ spec.name }}",
+        instructions='''{{ spec.instructions }}
+        
+        You are an orchestrator manager. You have automated workers available:
+        {{ spec.workers }}
+        Delegate strictly to the corresponding worker node based on the user's intent.
+        ''',
+    )
+    
+    {% if spec.tools %}
+    # Shared tools across the ecosystem
+    tools_to_add = {{ spec.tools }}
+    {% endif %}
+
+    return orchestrator
+
+if __name__ == "__main__":
+    create_orchestrator()

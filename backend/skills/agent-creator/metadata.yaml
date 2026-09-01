@@ -1,0 +1,7 @@
+id: agent-creator
+name: Agent Creator
+description: Design and create AI agents and multi-agent systems from natural language descriptions.
+tags:
+  - agent
+  - orchestration
+  - design

@@ -1,0 +1,54 @@
+[
+    {
+      "id": 1,
+      "input": "Create a simple search agent that looks up weather",
+      "expected_architecture": "single-agent",
+      "expected_tools": ["web-search"]
+    },
+    {
+      "id": 2,
+      "input": "Create a pipeline that formats a report and then translates it to French sequentially.",
+      "expected_architecture": "sequential"
+    },
+    {
+      "id": 3,
+      "input": "I need to fetch prices from 3 different sites independently at the same time and save them.",
+      "expected_architecture": "parallel"
+    },
+    {
+      "id": 4,
+      "input": "Create an agent that figures out if a request is support or billing and forwards it to the right department.",
+      "expected_architecture": "router"
+    },
+    {
+      "id": 5,
+      "input": "Create a manager agent that delegates subtasks to specialist workers.",
+      "expected_architecture": "supervisor"
+    },
+    {
+      "id": 6,
+      "input": "I want an automated research team with an orchestrator dividing work to several worker nodes.",
+      "expected_architecture": "orchestrator-workers"
+    },
+    {
+      "id": 7,
+      "input": "I want an agent that writes a draft, and another agent that criticizes and optimizes it in a loop.",
+      "expected_architecture": "evaluator-optimizer"
+    },
+    {
+      "id": 8,
+      "input": "Create a customer service bot that transfers the conversation to a human if it can't solve it.",
+      "expected_architecture": "handoff"
+    },
+    {
+      "id": 9,
+      "input": "Calculate 2+2.",
+      "expected_architecture": "none",
+      "note": "Task does not need an agent"
+    },
+    {
+      "id": 10,
+      "input": "Create an agent that uses super-google-search-v9 to find missing data.",
+      "expected_status": "missing_capability"
+    }
+]

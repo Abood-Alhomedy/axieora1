@@ -1,0 +1,19 @@
+from agent_framework import AzureOpenAIChatClient
+from azure.identity.aio import DefaultAzureCredential
+import os
+
+def create_worker():
+    """
+    Auto-generated Worker Node: {{ worker_name }}
+    Part of Ecosystem: {{ spec.name }}
+    """
+    worker = AzureOpenAIChatClient(
+        credential=DefaultAzureCredential(),
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+        deployment="gpt-4o",
+    ).as_agent(
+        name="{{ worker_name }}",
+        instructions='''{{ spec.instructions.get(worker_name, "You are a specialized worker node.") }}''',
+    )
+
+    return worker

@@ -1,0 +1,30 @@
+from agent_framework import AzureOpenAIChatClient
+from azure.identity.aio import DefaultAzureCredential
+import sys
+import os
+
+def create_agent():
+    """
+    Auto-generated Single Agent by Modular Agent Factory.
+    Architecture: {{ spec.architecture }}
+    """
+    agent = AzureOpenAIChatClient(
+        credential=DefaultAzureCredential(),
+        endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
+        deployment="gpt-4o",
+    ).as_agent(
+        name="{{ spec.name }}",
+        instructions='''{{ spec.instructions }}''',
+    )
+    
+    {% if spec.tools %}
+    # Attach capability tools
+    tools_to_add = {{ spec.tools }}
+    print(f"[{'{{ spec.name }}'}] Adding tools: {tools_to_add}")
+    # In a real environment, you iterate and agent.add_tool(ToolRegistry.get_tool(t))
+    {% endif %}
+
+    return agent
+
+if __name__ == "__main__":
+    create_agent()

@@ -35,6 +35,8 @@ from models import (
     WorkflowDefinition,
 )
 
+from core.pipeline import run_agent_factory_pipeline
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -223,6 +225,32 @@ When creating an agent:
 
 
 async def create_agent_from_prompt(prompt: str) -> AgentCreateResponse:
+    """Create an agent using the new fully modular Agent Factory Pipeline."""
+    logger.info(f"Starting modular pipeline for prompt: {prompt}")
+    
+    result = await run_agent_factory_pipeline(prompt)
+    
+    if result.get("status") in ["error", "missing_capability"]:
+        # نعيد رسالة خطأ صريحة إن فشل الـ Pipeline
+        msg = result.get('message', '')
+        if result.get("status") == "missing_capability":
+            msg += f" Missing: {result.get('missing')}"
+        raise Exception(f"Pipeline flow error: {msg}")
+        
+    return AgentCreateResponse(
+        name=result["name"],
+        definition=AgentDefinition(
+            name=result["name"],
+            description=result.get("description", "Created via Modular Pipeline"),
+            instructions=result.get("instructions", ""),
+            model="gpt-4o",
+            tools=result["tools"],
+            temperature=0.7
+        ),
+        code=result["code"],
+        validation=result["validation"],
+        message="Agent created successfully based on the factory pipeline."
+    )
     """Create an agent from a natural-language prompt."""
 
     # Load skill context for best practices
@@ -1466,16 +1494,41 @@ async def run_copilot_turn(session_id: str, user_message: str):
         state_str = json.dumps(session.task_state.model_dump(), ensure_ascii=False)
         build_prompt = f"قم ببناء وكيل بناءً على المتطلبات والمواصفات التالية:\n{state_str}"
         
-        # 2. استدعاء دالة البناء القديمة لتوليد الملفات فعلياً
-        agent_res = await create_agent_from_prompt(build_prompt)
-
-        return {
-            "status": "building",
-            "decision": decision,
-            "message": f"ممتاز! لقد قمت بإنشاء الوكيل «{agent_res.name}» بنجاح وبناء ملفاته.",
-            "state": session.task_state.model_dump(),
-            "agent": agent_res.model_dump() # إرسال تفاصيل الوكيل للفرونت إند
-        }
+        # 2. استدعاء دالة البناء لتوليد الملفات فعلياً
+        try:
+            agent_res = await create_agent_from_prompt(build_prompt)
+            friendly_msg = f"ممتاز! لقد قمت بإنشاء الوكيل «{agent_res.name}» بنجاح وبناء ملفاته."
+            save_message(session_id, "assistant", friendly_msg)
+            return {
+                "status": "building",
+                "decision": decision,
+                "message": friendly_msg,
+                "state": session.task_state.model_dump(),
+                "agent": agent_res.model_dump()
+            }
+        except Exception as build_err:
+            err_str = str(build_err)
+            # هل المشكلة أدوات مفقودة؟
+            if "missing" in err_str.lower() or "missing_capability" in err_str.lower():
+                missing_part = err_str.split("Missing:")[-1].strip() if "Missing:" in err_str else err_str
+                friendly_msg = (
+                    f"عذراً، لا أستطيع إنشاء هذا الوكيل حالياً لأن الأدوات المطلوبة غير متوفرة في النظام.\n\n"
+                    f"🔧 الأدوات المفقودة: {missing_part}\n\n"
+                    f"يمكنك طلب وكيل يعتمد على الأدوات المتاحة مثل: البحث في الويب، إرسال الإيميل عبر Gmail، إلخ."
+                )
+            else:
+                friendly_msg = (
+                    f"حدث خطأ أثناء إنشاء الوكيل. يرجى المحاولة مرة أخرى أو تحديد متطلبات مختلفة.\n\n"
+                    f"تفاصيل الخطأ: {err_str[:300]}"
+                )
+            save_message(session_id, "assistant", friendly_msg)
+            return {
+                "status": "waiting_for_user",
+                "decision": "ASK_USER",
+                "message": friendly_msg,
+                "questions": [],
+                "state": session.task_state.model_dump(),
+            }
     elif decision == "CALL_TOOL":
         tool_name = response_data.get("tool_name")
         tool_args = response_data.get("tool_args", {})

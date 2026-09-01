@@ -10,12 +10,44 @@ from typing import Optional, List, Dict, Any
 import datetime
 
 
+from pydantic import BaseModel, Field
+from typing import List, Optional
+
+class TaskSpec(BaseModel):
+    goal: str
+    subtasks: List[str] = Field(default_factory=list)
+    inputs: List[str] = Field(default_factory=list)
+    outputs: List[str] = Field(default_factory=list)
+    required_capabilities: List[str] = Field(default_factory=list)
+
+class ArchitecturePlan(BaseModel):
+    architecture_type: str = "single-agent"
+    rationale: str
+    num_agents: int = 1
+    workers: Optional[List[str]] = None
+
+class AgentSpec(BaseModel):
+    name: str
+    purpose: str
+    architecture: str
+    instructions: str
+    skills: List[str] = []
+    tools: List[str] = []
+    inputs: List[str] = []
+    outputs: List[str] = []
+    # New Fields for Architecture Overhaul
+    workflow: Optional[List[str]] = None
+    workers: Optional[List[str]] = None
+    worker_instructions: Optional[Dict[str, str]] = None
+    routes: Optional[Dict[str, str]] = None
+    constraints: Optional[str] = None
+
 class AgentDefinition(BaseModel):
     """Declarative agent definition (mirrors agent.yaml)."""
 
     name: str = Field(..., max_length=64, pattern=r"^[a-z][a-z0-9_]*$")
     description: str = Field(..., max_length=256)
-    instructions: str = Field(..., min_length=10, max_length=32_000)
+    instructions: str = Field(..., min_length=0, max_length=32_000)
     model: str = "gpt-4o"
     tools: list[str] = []
     temperature: float = 0.7
