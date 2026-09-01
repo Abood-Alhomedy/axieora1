@@ -24,6 +24,8 @@ import {
   type WorkflowDefinition,
   type WorkflowEvent,
 } from '../api/client'
+import BuilderChat from '../components/BuilderChat'
+import { AssistantMessage } from './AgentBuilderPage'
 const logger = pino({
   level: 'debug',
 })
@@ -49,18 +51,41 @@ interface BuilderMessage {
 }
 
 export default function WorkflowBuilderPage() {
+
+  const availableTools = [
+  {
+    id: 'web-search',
+    name: 'Web Search',
+    description: 'Search the web for up-to-date information.',
+    icon: '🔍',
+  },
+  {
+    id: 'calculator',
+    name: 'Calculator',
+    description: 'Perform mathematical calculations.',
+    icon: '🧮',
+  },
+  {
+    id: 'file-reader',
+    name: 'File Reader',
+    description: 'Read and process files.',
+    icon: '📄',
+  },
+]
+  const [workflowMenuOpen, setWorkflowMenuOpen] = useState(false)
   const [workflows, setWorkflows] = useState<{ name: string; description: string; executors_count: number; edges_count: number }[]>([])
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<WorkflowCreateResponse | null>(null)
   const [selectedWf, setSelectedWf] = useState<{ name: string; definition: any; code: string } | null>(null)
   const [viewTab, setViewTab] = useState<ViewTab>('graph')
-
+  const [chatKey, setChatKey] = useState(Date.now())
   // ── حالة محادثة إنشاء سير العمل ──
   const [builderMessages, setBuilderMessages] = useState<BuilderMessage[]>([])
   const [builderInput, setBuilderInput] = useState('')
-  const [isCreating, setIsCreating] = useState(false)
+  const [isCreating, setIsCreating] = useState(true)
   const builderEndRef = useRef<HTMLDivElement>(null)
 
+  const [rightTab, setRightTab] = useState<'chat' | 'toolbar' | 'editor'>('chat')
   // ── حالة ساحة الاختبار ──
   const [runInput, setRunInput] = useState('')
   const [execStatus, setExecStatus] = useState<ExecutionStatus>('idle')
@@ -78,10 +103,10 @@ export default function WorkflowBuilderPage() {
   const handleDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     isDragging.current = true
-logger.info({
+    logger.info({
 
-isisDragging:isDragging
-});
+      isisDragging: isDragging
+    });
     const onMove = (ev: MouseEvent) => {
       if (!isDragging.current || !centerRef.current) return
 
@@ -112,7 +137,7 @@ isisDragging:isDragging
   const refreshList = () => {
     listWorkflows()
       .then(d => setWorkflows(d.workflows))
-      .catch(() => {})
+      .catch(() => { })
   }
 
   useEffect(() => {
@@ -127,23 +152,52 @@ isisDragging:isDragging
     builderEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [builderMessages, loading])
 
-  // ── إنشاء سير عمل جديد ──
-  const handleNew = () => {
+const handleNew = () => {
+  setIsCreating(true)
+
+  setChatKey(Date.now())
+
+  setResult(null)
+  setSelectedWf(null)
+
+  setBuilderMessages([])
+
+  resetExecution()
+
+  setWorkflowMenuOpen(false)
+
+  // فتح تبويب الشات مباشرة
+  setRightTab('chat')
+}
+
+  const handleEditSelectedWf = () => {
     setIsCreating(true)
-
-    setBuilderMessages([
-      {
-        role: 'system',
-        content:
-          'سيتم إنشاء سير عمل جديد. ما نوع سير العمل الذي تريد إنشاءه؟ يرجى وصف ما تريده.',
-      },
-    ])
-
-    setResult(null)
-    setSelectedWf(null)
-    resetExecution()
-    setBuilderInput('')
+    setChatKey(Date.now())
   }
+
+  const handleSelectWorkflow = async (name: string) => {
+  try {
+    setLoading(true)
+
+    const data = await getWorkflow(name)
+
+    setSelectedWf(data)
+    setResult(null)
+
+    setIsCreating(false)
+
+    // إعادة تعيين المحادثة والتنفيذ
+    setBuilderMessages([])
+    setChatKey(Date.now())
+    resetExecution()
+
+    setWorkflowMenuOpen(false)
+  } catch (error) {
+    console.error('Failed to load workflow:', error)
+  } finally {
+    setLoading(false)
+  }
+}
 
   // ── إرسال رسالة محادثة إنشاء سير العمل ──
   const handleBuilderSend = async () => {
@@ -157,14 +211,14 @@ isisDragging:isDragging
     setBuilderMessages(prev => [...prev, userMsg])
     setBuilderInput('')
     setLoading(true)
-logger.info({
-lodding:loading
-});
+    logger.info({
+      lodding: loading
+    });
     const currentName = result?.name || selectedWf?.name
-logger.info({
+    logger.info({
 
-currnetName:currentName
-});
+      currnetName: currentName
+    });
     try {
       let res: WorkflowCreateResponse
 
@@ -216,34 +270,8 @@ ${res.validation.errors.join('\n')}`,
   }
 
   // ── تعديل سير العمل المحدد عبر المحادثة ──
-  const handleEditSelectedWf = () => {
-    if (!selectedWf && !result) return
 
-    const name = result?.name || selectedWf?.name
 
-    setIsCreating(true)
-
-    setBuilderMessages([
-      {
-        role: 'system',
-        content: `تم فتح سير العمل «${name}» في وضع التعديل. ما التغييرات التي تريد إجراءها؟`,
-      },
-    ])
-
-    setBuilderInput('')
-  }
-
-  const handleSelectWf = async (name: string) => {
-    try {
-      const data = await getWorkflow(name)
-
-      setSelectedWf(data)
-      setResult(null)
-      setIsCreating(false)
-      setBuilderMessages([])
-      resetExecution()
-    } catch {}
-  }
 
   const handleDelete = async (name: string) => {
     if (!confirm(`هل تريد حذف سير العمل "${name}"؟`)) return
@@ -431,687 +459,265 @@ ${res.validation.errors.join('\n')}`,
 
   return (
     <div className="devui-shell">
+      <div className="devui-body" style={{ display: 'flex', width: '100%', height: 'calc(100vh - 40px)' }}>
 
-      {/* ── شريط الأدوات العلوي ── */}
-      <div className="devui-toolbar">
-        <div className="devui-toolbar-title">
-          🔀 سير العمل
-        </div>
-
-        <div style={{ flex: 1 }} />
-
-        <div className="devui-toolbar-actions">
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={handleNew}
-          >
-            ＋ إنشاء جديد
-          </button>
-        </div>
-      </div>
-
-      {/* ── محتوى بثلاثة أعمدة ── */}
-      <div className="devui-body">
-
-        {/* العمود الأيسر: قائمة سير العمل */}
-        <div className="devui-list-panel">
-
-          <div className="devui-list-header">
-            <span className="devui-list-header-title">
-              سير العمل
-            </span>
-
-            <span
-              style={{
-                fontSize: 11,
-                color: 'var(--text-muted)',
-              }}
-            >
-              {workflows.length}
-            </span>
-          </div>
-
-          <div className="devui-list-body">
-            {workflows.length === 0 ? (
-              <div className="devui-empty">
-                <div className="devui-empty-icon">🔀</div>
-                <span>لا توجد سير عمل بعد</span>
-              </div>
-            ) : (
-              workflows.map(w => (
-                <div
-                  key={w.name}
-                  className={`devui-list-item ${
-                    selectedWf?.name === w.name
-                      ? 'devui-list-item--active'
-                      : ''
-                  }`}
-                  onClick={() => handleSelectWf(w.name)}
-                >
-                  <div className="devui-list-item-name">
-                    {w.name}
-                  </div>
-
-                  <div className="devui-list-item-desc">
-                    {w.description}
-                  </div>
-
-                  <div className="devui-list-item-meta">
-                    {w.executors_count} عقد · {w.edges_count} وصلات
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* العمود الأوسط: المحادثة + الرسم البياني / الكود / YAML */}
-        <div
-          className="devui-center"
-          ref={centerRef}
-        >
-
-          {/* محادثة إنشاء وتعديل سير العمل */}
-          {isCreating && (
-            <div
-              className="builder-chat-panel"
-              style={{
-                flex: `0 0 ${chatPanelPct}%`,
-                maxHeight: `${chatPanelPct}%`,
-                minHeight: 0,
-                borderBottom:
-                  '2px solid rgba(99,102,241,0.3)',
-              }}
-            >
-
-              <div className="builder-chat-header">
-                <span className="builder-chat-header-title">
-                  💬 محادثة إنشاء سير العمل
-                </span>
-
-                <button
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setIsCreating(false)}
-                >
-                  ✕ إغلاق
-                </button>
-              </div>
-
-              <div className="builder-chat-messages">
-                {builderMessages.map((msg, i) => (
-                  <div
-                    key={i}
-                    className={`builder-msg builder-msg-${msg.role}`}
-                  >
-                    <div className="builder-msg-role">
-                      {msg.role === 'user' && '👤 أنت'}
-                      {msg.role === 'assistant' && '🤖 الذكاء الاصطناعي'}
-                      {msg.role === 'system' && '🔧 النظام'}
-                    </div>
-
-                    <div className="builder-msg-content">
-                      {msg.content}
-                    </div>
-                  </div>
-                ))}
-
-                {loading && (
-                  <div className="builder-msg builder-msg-assistant">
-                    <div className="builder-msg-role">
-                      🤖 الذكاء الاصطناعي
-                    </div>
-
-                    <div className="builder-msg-content">
-                      <span className="playground-thinking">
-                        جارٍ الإنشاء...
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                <div ref={builderEndRef} />
-              </div>
-
-              <div className="builder-chat-footer">
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'flex-end',
-                  }}
-                >
-                  <textarea
-                    className="form-input chat-textarea"
-                    placeholder={
-                      result?.name || selectedWf?.name
-                        ? 'أدخل التعديل... (مثال: «أضف خطوة لتسجيل السجلات»)'
-                        : 'أدخل وصف سير العمل...'
-                    }
-                    value={builderInput}
-                    onChange={e =>
-                      setBuilderInput(e.target.value)
-                    }
-                    onKeyDown={e => {
-                      if (
-                        e.key === 'Enter' &&
-                        (e.ctrlKey || e.metaKey)
-                      ) {
-                        e.preventDefault()
-                        handleBuilderSend()
-                      }
-                    }}
-                    disabled={loading}
-                    rows={2}
-                    style={{
-                      flex: 1,
-                      padding: '10px 14px',
-                      fontSize: 13,
-                    }}
-                  />
-
-                  <button
-                    className="btn btn-primary btn-sm"
-                    onClick={handleBuilderSend}
-                    disabled={
-                      loading || !builderInput.trim()
-                    }
-                    style={{
-                      alignSelf: 'flex-end',
-                      marginBottom: 2,
-                    }}
-                  >
-                    {loading ? (
-                      <span className="spinner" />
-                    ) : (
-                      'إرسال'
-                    )}
-                  </button>
-                </div>
-
-                <div className="chat-textarea-hint">
-                  Ctrl+Enter للإرسال
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* مقبض تغيير حجم المحادثة */}
-          {isCreating && (
-            <div
-              className="resize-handle-h"
-              onMouseDown={handleDragStart}
-            />
-          )}
-
-          {/* تفاصيل سير العمل */}
+        {/* العمود الأوسط: الرسم البياني بكامل المساحة دون أي أشرطة علوية مكررة */}
+        <div className="devui-center" ref={centerRef} style={{ flex: 1, position: 'relative', backgroundColor: 'var(--bg-primary)' }}>
           {activeDef ? (
             <div className="devui-center-full">
-
-              <div className="devui-center-header">
-
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      fontSize: 13,
-                    }}
-                  >
-                    {activeName}
-                  </span>
-
-                  {result?.validation && (
-                    <span
-                      className={`badge ${
-                        result.validation.valid
-                          ? 'badge-success'
-                          : 'badge-error'
-                      }`}
-                    >
-                      {result.validation.valid
-                        ? '✓ سليم'
-                        : '✗ خطأ'}
-                    </span>
-                  )}
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 4,
-                    alignItems: 'center',
-                  }}
-                >
-
-                  <div className="devui-tabs tabs">
-
-                    <button
-                      className={`tab ${
-                        viewTab === 'graph'
-                          ? 'active'
-                          : ''
-                      }`}
-                      onClick={() =>
-                        setViewTab('graph')
-                      }
-                    >
-                      📊 الرسم البياني
-                    </button>
-
-                    <button
-                      className={`tab ${
-                        viewTab === 'yaml'
-                          ? 'active'
-                          : ''
-                      }`}
-                      onClick={() =>
-                        setViewTab('yaml')
-                      }
-                    >
-                      YAML
-                    </button>
-
-                    <button
-                      className={`tab ${
-                        viewTab === 'code'
-                          ? 'active'
-                          : ''
-                      }`}
-                      onClick={() =>
-                        setViewTab('code')
-                      }
-                    >
-                      Python
-                    </button>
-
-                  </div>
-
-                  {!isCreating && (
-                    <button
-                      className="btn btn-accent btn-sm"
-                      onClick={handleEditSelectedWf}
-                    >
-                      ✏️ تعديل عبر المحادثة
-                    </button>
-                  )}
-
-                  <button
-                    className="btn btn-danger btn-sm"
-                    onClick={() =>
-                      handleDelete(activeName)
-                    }
-                  >
-                    🗑️
-                  </button>
-
-                </div>
-              </div>
-
-              {result?.validation &&
-                !result.validation.valid && (
-                  <div
-                    style={{
-                      padding: '8px 16px',
-                      background: 'var(--error-glow)',
-                      borderBottom:
-                        '1px solid var(--border)',
-                    }}
-                  >
-                    {result.validation.errors.map(
-                      (e, i) => (
-                        <p
-                          key={i}
-                          style={{
-                            color: 'var(--error)',
-                            fontSize: 12,
-                          }}
-                        >
-                          • {e}
-                        </p>
-                      ),
-                    )}
-                  </div>
-                )}
-
               <div className="devui-center-body">
-
-                {viewTab === 'graph' && (
-                  <AnimatedWorkflowGraph
-                    definition={activeDef}
-                    activeNodes={activeNodes}
-                    activeEdges={activeEdges}
-                    nodeOutputs={nodeOutputs}
-                  />
-                )}
-
-                {viewTab === 'yaml' && (
-                  <pre className="code-block">
-                    {JSON.stringify(
-                      activeDef,
-                      null,
-                      2,
-                    )}
-                  </pre>
-                )}
-
-                {viewTab === 'code' && (
-                  <pre className="code-block">
-                    {activeCode}
-                  </pre>
-                )}
-
+                <AnimatedWorkflowGraph
+                  definition={activeDef}
+                  activeNodes={activeNodes}
+                  activeEdges={activeEdges}
+                  nodeOutputs={nodeOutputs}
+                />
               </div>
             </div>
-          ) : !isCreating ? (
-
-            <div className="devui-empty">
-              <div className="devui-empty-icon">
-                📊
-              </div>
-
-              <span>
-                أنشئ سير عمل أو اختر سير عمل موجوداً
-              </span>
-
-              <span
-                style={{
-                  fontSize: 11,
-                  color: 'var(--text-muted)',
-                }}
-              >
-                اضغط على «＋ إنشاء جديد» أو اختر سير عمل
-                من القائمة اليسرى
-              </span>
-            </div>
-
           ) : (
-
-            <div
-              className="devui-center-full"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <span
-                style={{
-                  color: 'var(--text-muted)',
-                  fontSize: 13,
-                }}
-              >
-                أدخل وصف سير العمل في المحادثة
+            <div className="devui-center-full" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ color: 'var(--text-muted)', fontSize: 13, userSelect: 'none' }}>
+                الرسم البياني سيظهر هنا عند إنشاء سير العمل...
               </span>
             </div>
-
           )}
         </div>
 
-        {/* العمود الأيمن: ساحة الاختبار */}
-        <div className="devui-right">
+        {/* العمود الأيمن: القائمة الجانبية (دردشة / أدوات / محرر) المرفقة بالصورة */}
+        <div className="devui-right" style={{ width: '380px', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-secondary)', borderLeft: '1px solid var(--border)' }}>
 
-          <div className="devui-right-header">
-            <span className="devui-right-header-title">
-              🎮 ساحة الاختبار
-            </span>
-
-            {execStatus !== 'idle' && (
-              <button
-                className="btn btn-secondary btn-sm"
-                onClick={resetExecution}
-              >
-                إعادة ضبط
-              </button>
-            )}
+          {/* الأزرار العلوية تماماً كالصورة (Run, Update ...) */}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '12px 16px', gap: '8px' }}>
+            <button className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', background: 'transparent', border: '1px solid var(--border)' }}>...</button>
+            <button className="btn btn-secondary btn-sm" style={{ padding: '6px 10px', background: 'transparent', border: '1px solid var(--border)' }}>🎨</button>
+            <button className="btn btn-secondary btn-sm" style={{ padding: '6px 16px', background: 'transparent', border: '1px solid var(--border)', color: 'white' }}>Update</button>
+            <button
+              className="btn btn-sm"
+              style={{ padding: '6px 16px', display: 'flex', alignItems: 'center', gap: '4px', background: 'white', color: 'black', fontWeight: 600, border: 'none' }}
+              onClick={handleRun}
+              disabled={execStatus === 'running'}
+            >
+              {execStatus === 'running' ? <span className="spinner" /> : '▶'} Run
+            </button>
           </div>
 
-          {activeName ? (
-            <>
+          {/* التبويبات (Tabs: Chat, Toolbar, Editor) */}
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--border)', padding: '0 16px', gap: '24px', fontSize: '13px' }}>
+            <div
+              onClick={() => setRightTab('chat')}
+              style={{ padding: '10px 0', borderBottom: rightTab === 'chat' ? '2px solid white' : '2px solid transparent', cursor: 'pointer',  }}
+            >
+              Chat
+            </div>
+            <div
+              onClick={() => setRightTab('toolbar')}
+              style={{ padding: '10px 0', borderBottom: rightTab === 'toolbar' ? '2px solid white' : '2px solid transparent', cursor: 'pointer' }}
+            >
+              Toolbar
+            </div>
+            <div
+              onClick={() => setRightTab('editor')}
+              style={{ padding: '10px 0', borderBottom: rightTab === 'editor' ? '2px solid white' : '2px solid transparent', cursor: 'pointer', }}
+            >
+              Editor
+            </div>
+          </div>
 
-              {/* إدخال التنفيذ */}
-              <div
-                style={{
-                  padding: '10px 12px',
-                  borderBottom:
-                    '1px solid var(--border)',
-                  flexShrink: 0,
+          {/* محتوى اللوحة اليمنى بناءً على التبويب المختار */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+            {/* 1. تبويب الدردشة (Chat) كالصورة */}
+            {rightTab === 'chat' && (
+              <BuilderChat
+                key={chatKey}
+                type="workflow"
+                initialMessages={[
+                  {
+                    role: 'system',
+                    content: selectedWf || result?.name
+                      ? `تم فتح سير العمل في وضع التعديل. ما التغييرات التي تريد إجراؤها؟`
+                      : `يرجى تقديم وصف لسير العمل الذي ترغب في إنشائه.`
+                  }
+                ]}
+                currentName={result?.name || selectedWf?.name}
+                onClose={() => setRightTab('editor')}
+                onSuccess={(resData) => {
+                  setResult(resData)
+                  if (resData.name) {
+                    getWorkflow(resData.name).then(data => setSelectedWf(data))
+                  }
+                  refreshList()
                 }}
-              >
+              />
+            )}
 
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: 8,
-                    alignItems: 'flex-end',
-                  }}
-                >
-                  <textarea
-                    className="form-input chat-textarea"
-                    placeholder="أدخل الرسالة..."
-                    value={runInput}
-                    onChange={e =>
-                      setRunInput(e.target.value)
-                    }
-                    onKeyDown={e => {
-                      if (
-                        e.key === 'Enter' &&
-                        (e.ctrlKey || e.metaKey)
-                      ) {
-                        e.preventDefault()
-                        handleRun()
-                      }
-                    }}
-                    disabled={
-                      execStatus === 'running'
-                    }
-                    rows={2}
-                    style={{
-                      flex: 1,
-                      padding: '8px 12px',
-                      fontSize: 13,
-                    }}
-                  />
+{/* 2. تبويب الأدوات (Toolbar) */}
+{rightTab === 'toolbar' && (
+  <div
+    style={{
+      padding: '16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '10px',
+      overflowY: 'auto',
+      height: '100%',
+    }}
+  >
+    {/* عنوان */}
+    <div
+      style={{
+        fontSize: 13,
+        fontWeight: 700,
+        color: 'var(--text-muted)',
+        marginBottom: 4,
+      }}
+    >
+      🛠 الأدوات
+    </div>
 
-                  <button
-                    className={`btn btn-sm ${
-                      execStatus === 'running'
-                        ? 'btn-secondary'
-                        : 'btn-primary'
-                    }`}
-                    onClick={handleRun}
-                    disabled={
-                      execStatus === 'running'
-                    }
-                    style={{
-                      alignSelf: 'flex-end',
-                      marginBottom: 2,
-                    }}
-                  >
-                    {execStatus === 'running' ? (
-                      <>
-                        <span className="spinner" />
-                        جارٍ التنفيذ
-                      </>
-                    ) : (
-                      '▶ تنفيذ'
-                    )}
-                  </button>
-                </div>
+    {/* قائمة الأدوات */}
+    {availableTools.map((tool) => (
+      <div
+        key={tool.id}
+        className="workflow-tool-item"
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData(
+            'application/reactflow',
+            'tool'
+          )
 
-                <div className="chat-textarea-hint">
-                  Ctrl+Enter للإرسال
-                </div>
-              </div>
+          event.dataTransfer.setData(
+            'tool-data',
+            JSON.stringify(tool)
+          )
 
-              {/* حالة التنفيذ */}
-              {execStatus !== 'idle' && (
-                <div
-                  style={{
-                    padding: '0 12px',
-                    flexShrink: 0,
-                    marginTop: 8,
-                  }}
-                >
-                  <div
-                    className={`playground-wf-status playground-wf-status-${execStatus}`}
-                  >
-                    {execStatus === 'running' &&
-                      '⏳ جارٍ التنفيذ...'}
-                    {execStatus === 'done' &&
-                      '✅ اكتمل التنفيذ'}
-                    {execStatus === 'error' &&
-                      '❌ حدث خطأ'}
+          event.dataTransfer.effectAllowed = 'move'
+        }}
+      >
+        <div className="workflow-tool-icon">
+          {tool.icon}
+        </div>
+
+        <div className="workflow-tool-info">
+          <div className="workflow-tool-name">
+            {tool.name}
+          </div>
+
+          <div className="workflow-tool-description">
+            {tool.description}
+          </div>
+        </div>
+
+        <div
+          style={{
+            color: 'var(--text-muted)',
+            fontSize: 16,
+            opacity: 0.6,
+          }}
+        >
+          ⠿
+        </div>
+      </div>
+    ))}
+
+    {/* فاصل */}
+    <div
+      style={{
+        height: 1,
+        background: 'var(--border)',
+        margin: '8px 0',
+      }}
+    />
+
+    {/* إعدادات سير العمل الحالية */}
+    {activeName && (
+      <button
+        className="btn btn-danger btn-sm"
+        onClick={() => handleDelete(activeName)}
+      >
+        🗑️ حذف سير العمل الحالي
+      </button>
+    )}
+  </div>
+)}
+
+            {/* 3. تبويب المحرر وساحة الاختبار (Editor) لرؤية نتائج الـ Run */}
+            {rightTab === 'editor' && (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: '12px' }}>
+                {execStatus !== 'idle' && (
+                  <div className={`playground-wf-status playground-wf-status-${execStatus}`} style={{ marginBottom: 12 }}>
+                    {execStatus === 'running' && '⏳ جارٍ التنفيذ...'}
+                    {execStatus === 'done' && '✅ اكتمل التنفيذ'}
+                    {execStatus === 'error' && '❌ حدث خطأ'}
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* السجلات */}
-              <div className="devui-right-body">
-
-                {logs.length === 0 &&
-                  execStatus === 'idle' && (
+                <div className="devui-right-body" style={{ flex: 1 }}>
+                  {logs.length === 0 ? (
                     <div className="devui-empty">
-                      <span
-                        style={{ fontSize: 12 }}
-                      >
-                        ▶ اضغط على تنفيذ لاختبار سير العمل
-                      </span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>اضغط على زر Run بالأعلى لتنفيذ سير العمل وعرض السجلات هنا.</span>
                     </div>
-                  )}
-
-                {logs.length > 0 && (
-                  <div className="devui-exec-section">
-
-                    <div className="devui-exec-section-title">
-                      📋 سجل التنفيذ
-                    </div>
-
-                    <div className="wf-log-list">
-
-                      {logs.map(log => (
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {logs.map((log, i) => (
                         <div
-                          key={log.id}
-                          className={`wf-log-item wf-log-${log.type} wf-log-clickable`}
-                          onClick={() =>
-                            setSelectedLog(log)
-                          }
+                          key={log.id || i}
+                          className={`wf-log wf-log-${log.type}`}
+                        // onClick={() => handleLogClick(log)}
                         >
-
-                          <div className="wf-log-badge">
-                            {log.type === 'start' &&
-                              '🟢 بدء التنفيذ'}
-
-                            {log.type === 'node_enter' &&
-                              '⏩ جارٍ التنفيذ'}
-
-                            {log.type ===
-                              'node_complete' &&
-                              '✅ اكتمل'}
-
-                            {log.type ===
-                              'edge_active' &&
-                              '→ انتقال'}
-
-                            {log.type ===
-                              'edge_skipped' &&
-                              '⊘ تم التخطي'}
-
-                            {log.type === 'done' &&
-                              '🏁 انتهى'}
-
-                            {log.type === 'error' &&
-                              '❌ خطأ'}
+                          <div className="wf-log-header">
+                            <span className="wf-log-time">
+                              {new Date(log.timestamp).toLocaleTimeString()}
+                            </span>
+                            <span>
+                              {log.type === 'start' && '🚀 بدء التنفيذ'}
+                              {log.type === 'done' && '✅ اكتمل بنجاح'}
+                              {log.type === 'error' && '❌ خطأ!'}
+                              {log.type === 'node_enter' && `⚙️ دخول: ${log.node}`}
+                              {log.type === 'node_complete' && `✔️ اكتمل: ${log.node}`}
+                              {log.type === 'edge_active' && `➡️ انتقال`}
+                              {log.type === 'edge_skipped' && `🛑 تم التخطي`}
+                            </span>
                           </div>
 
-                          {log.node && (
-                            <div className="wf-log-node">
-                              {log.node}
-                            </div>
-                          )}
-
-                          {log.type ===
-                            'edge_active' && (
+                          {log.type === 'edge_active' && (
                             <div className="wf-log-edge">
-                              {log.source} → {log.target}
-                              {log.condition || ''}
+                              {log.source} → {log.target} {log.condition || ''}
                             </div>
                           )}
 
-                          {log.type ===
-                            'edge_skipped' && (
-                            <div
-                              className="wf-log-edge"
-                              style={{
-                                opacity: 0.5,
-                                textDecoration:
-                                  'line-through',
-                              }}
-                            >
-                              {log.source} → {log.target}
-                              {log.condition || ''}
+                          {log.type === 'edge_skipped' && (
+                            <div className="wf-log-edge" style={{ opacity: 0.5, textDecoration: 'line-through' }}>
+                              {log.source} → {log.target} {log.condition || ''}
                             </div>
                           )}
 
                           {log.input && (
                             <div className="wf-log-data">
-                              <span className="wf-log-data-label">
-                                الإدخال:
-                              </span>
-
-                              {log.input.length > 100
-                                ? log.input.slice(0, 100) +
-                                  '...'
-                                : log.input}
+                              <span className="wf-log-data-label">الإدخال:</span>
+                              {log.input.length > 100 ? log.input.slice(0, 100) + '...' : log.input}
                             </div>
                           )}
 
                           {log.output && (
                             <div className="wf-log-data">
-                              <span className="wf-log-data-label">
-                                الإخراج:
-                              </span>
-
-                              {log.output.length > 150
-                                ? log.output.slice(0, 150) +
-                                  '...'
-                                : log.output}
+                              <span className="wf-log-data-label">الإخراج:</span>
+                              {log.output.length > 150 ? log.output.slice(0, 150) + '...' : log.output}
                             </div>
                           )}
-
-                          <div className="wf-log-tap-hint">
-                            اضغط لعرض التفاصيل
-                          </div>
-
                         </div>
                       ))}
-
                       <div ref={logsEndRef} />
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-            </>
-          ) : (
-            <div className="devui-empty">
-              <div className="devui-empty-icon">
-                🎮
-              </div>
-
-              <span>
-                اختر سير عمل لتنفيذه
-              </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      {/* نافذة تفاصيل السجل */}
       {selectedLog && (
         <div
           className="log-popup-overlay"
@@ -1565,9 +1171,9 @@ function PlaygroundNodeContent({
   type: string
   isStart: boolean
   state:
-    | 'processing'
-    | 'completed'
-    | 'idle'
+  | 'processing'
+  | 'completed'
+  | 'idle'
   output: string
 }) {
   const stateClass =
@@ -1581,9 +1187,9 @@ function PlaygroundNodeContent({
       style={
         isStart && state === 'idle'
           ? {
-              boxShadow:
-                '0 0 12px rgba(99,102,241,0.4)',
-            }
+            boxShadow:
+              '0 0 12px rgba(99,102,241,0.4)',
+          }
           : {}
       }
     >
@@ -1620,7 +1226,7 @@ function PlaygroundNodeContent({
           >
             {output.length > 60
               ? output.slice(0, 60) +
-                '...'
+              '...'
               : output}
           </div>
         )}
