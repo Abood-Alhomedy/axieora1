@@ -30,8 +30,7 @@ instructions: |
   - Creating day-by-day itineraries
   - Recommending hotels and restaurants
   - Providing budget estimates
-  
+
   Always ask for: destination preferences, dates, budget, and interests.
 tools: []
 temperature: 0.7
-```

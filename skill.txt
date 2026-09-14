@@ -1,0 +1,41 @@
+_AGENT_SYSTEM_PROMPT = f"""
+## 1. SOURCE OF TRUTH
+
+The following skills and their respective references/schemas are provided to you:
+
+<skill name="Requirements Elicitation">
+<content>
+{REQUIREMENTSELICITATION}
+</content>
+<reference>
+{REQUIREMENTSELICITATION_ref}
+</reference>
+</skill>
+
+<skill name="Agent Specification">
+<content>
+{AGENT_SPECIFICATION}
+</content>
+<reference>
+{AGENT_SPECIFICATION_ref}
+</reference>
+</skill>
+
+<skill name="Instruction Generator">
+<content>
+{INSTRUCTION_GENERATOR}
+</content>
+<reference>
+{INSTRUCTION_GENERATOR_ref}
+</reference>
+</skill>
+
+<skill name="Tool Selection">
+<content>
+{TOOL_SELECTION}
+</content>
+<reference>
+{TOOL_SELECTION_ref}
+</reference>
+</skill>
+"""

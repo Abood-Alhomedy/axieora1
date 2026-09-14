@@ -1,7 +1,7 @@
 """FastAPI application – API endpoints for Agent & Workflow creation."""
 from __future__ import annotations
 from orchestrator import run_copilot_turn
-
+from moules.auth.route import router as authrouter
 
 from models import ChatRequest
 # from conversational_orchestrator import run_copilot_turn
@@ -42,8 +42,8 @@ from orchestrator import (
     edit_workflow,
 )
 import json
-import Tools.gmail # لتسجيل أدوات جي ميل
-import Tools.web_search # لتسجيل أداة البحث الحقيقية
+# import Tools.gmail # لتسجيل أدوات جي ميل
+# import Tools.web_search # لتسجيل أداة البحث الحقيقية
 from Tools.clean_registry import CleanToolRegistry
 from Tools.oauth import router as oauth_router, USER_TOKENS
 
@@ -60,6 +60,7 @@ app = FastAPI(
     version="0.1.0",
 )
 app.include_router(oauth_router)
+app.include_router(authrouter)
 # CORS for frontend
 app.add_middleware(
     CORSMiddleware,

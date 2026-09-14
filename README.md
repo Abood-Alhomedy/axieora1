@@ -101,7 +101,6 @@ python -m venv .venv
 # source .venv/bin/activate
 
 # Install dependencies
-pip install -r backend/requirements.txt
 
 # Configure environment
 cp backend/.env.example backend/.env
@@ -223,5 +222,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-#   a x i e o r a 1  
+#   a x i e o r a 1 
+ 
  
