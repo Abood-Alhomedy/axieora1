@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
+from pymsgbox import password
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from database.database import get_db
+import hashlib
 
 from moules.auth.schma import TokenResponse, UserLogin
-from moules.auth.servies import verify_password, create_acces_token,ACCESS_TOKEN_EXPIER_MINUTES
+from moules.auth.servies import hash_password, hash_password, verify_password, create_acces_token,ACCESS_TOKEN_EXPIER_MINUTES
 from database.database import SessionLocal
-from database.models import User
+from database.models import User,Session as ses
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -35,10 +37,24 @@ def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
         data={"sub": str(user.id), "email": user.email},
          expire_delta=expires_delta
     )
-    
+    token_hash = hashlib.sha256(
+    access_token.encode("utf-8")
+).hexdigest()
+    sesion = ses(
+    token_hash=token_hash,
+user_id=user.id,
+expires_at=expire_time
+                )
+    user_id = user.id
+        
+    db.add(sesion)
+    db.commit()
+    db.refresh(sesion)
+    db.close()
     # 5. إرجاع النتيجة متطابقة تماماً مع TokenResponse Schema
     return {
         "access_token": access_token,
         "token_type": "bearer",
+        "user_id":user_id,
         "expires_at": expire_time
     }

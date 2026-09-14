@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
 
+from uuid import UUID
+
 
 
 class UserLogin(BaseModel):
@@ -14,6 +16,7 @@ class UserLogin(BaseModel):
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str ="beaerer"
+    user_id:UUID
     expires_at: datetime
 
 
